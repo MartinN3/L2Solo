@@ -26,5 +26,5 @@ module.exports = function privateStoreManageListSell(actor, store) {
             .writeD(row.count).writeH(item.fetchEnchantLevel?.() || 0).writeH(0).writeH(0)
             .writeD(bodyPart(item)).writeD(row.price).writeD(item.fetchPrice());
     });
-    return packet.fetchBuffer();
+    return packet.buffer;
 };

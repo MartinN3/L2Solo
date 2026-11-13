@@ -7,7 +7,9 @@ function privateStoreMsg(actor, storeTitle) {
     const packet = new SendPacket(0x9c);
     packet.writeD(actor.fetchId());
     packet.writeS(typeof storeTitle === 'string' ? storeTitle : actor.fetchTitle());
-    return packet.fetchBuffer();
+    // These C4 string packets have no checksum or payload padding. The browser
+    // client consumes exactly the object id and terminated UTF-16 title.
+    return packet.buffer;
 }
 
 module.exports = privateStoreMsg;

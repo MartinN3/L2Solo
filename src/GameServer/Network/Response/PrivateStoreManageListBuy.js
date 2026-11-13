@@ -22,5 +22,5 @@ module.exports = function privateStoreManageListBuy(actor, store) {
             .writeH(0).writeD(bodyPart(item)).writeH(template.template?.class2 || 0)
             .writeD(row.price).writeD(template.template?.price || 0);
     });
-    return packet.fetchBuffer();
+    return packet.buffer;
 };

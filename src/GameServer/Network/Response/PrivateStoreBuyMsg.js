@@ -5,7 +5,8 @@ function privateStoreBuyMsg(actor, storeTitle) {
     const packet = new SendPacket(0xb9);
     packet.writeD(actor.fetchId());
     packet.writeS(typeof storeTitle === 'string' ? storeTitle : actor.fetchTitle());
-    return packet.fetchBuffer();
+    // Keep the payload exact; the client rejects trailing bytes after the title.
+    return packet.buffer;
 }
 
 module.exports = privateStoreBuyMsg;

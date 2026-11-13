@@ -58,7 +58,7 @@ function privateStoreListBuy(merchant, rows, adena) {
             .writeD(row.amount);
     });
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = privateStoreListBuy;

@@ -15,5 +15,5 @@ module.exports = function privateStoreListSell(seller, customer) {
             .writeH(0).writeH(item.fetchEnchantLevel?.() || 0).writeH(0)
             .writeD(bodyPart(item)).writeD(row.price).writeD(item.fetchPrice());
     });
-    return packet.fetchBuffer();
+    return packet.buffer;
 };
