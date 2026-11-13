@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 11673)
-Total output lines: 819
-
 const assert = require('assert');
 
 require('../src/Global');
@@ -415,7 +412,98 @@ const moveToPawn = ServerResponse.moveToPawn(actor, movementTarget, 80);
 assert.strictEqual(moveToPawn[0], 0x60, 'C4 MoveToPawn opcode should be 0x60');
 assert.strictEqual(moveToPawn.readInt32LE(5), movementTarget.fetchId(), 'C4 MoveToPawn should include the target object id');
 assert.strictEqual(moveToPawn.readInt32LE(25), movementTarget.fetchLocX(), 'C4 MoveToPawn must include target X after source coordinates');
-assert.strictEqual(moveToPawn.readInt32LE(29), movementTa…1673 tokens truncated…rictEqual(ServerResponse.charInfo(enchantedActor)[enchantedCharNameColorOffset - 21], 0, 'mounted C4 characters should suppress the weapon enchant effect');
+assert.strictEqual(moveToPawn.readInt32LE(29), movementTarget.fetchLocY(), 'C4 MoveToPawn must include target Y after source coordinates');
+assert.strictEqual(moveToPawn.readInt32LE(33), movementTarget.fetchLocZ(), 'C4 MoveToPawn must include target Z after source coordinates');
+
+const groundItem = {
+    fetchId: () => 1000002,
+    fetchSelfId: () => 57,
+    fetchLocX: () => 11,
+    fetchLocY: () => 22,
+    fetchLocZ: () => 33,
+    fetchStackable: () => 1,
+    fetchAmount: () => 1234
+};
+const spawnItem = ServerResponse.spawnItem(groundItem);
+assert.strictEqual(spawnItem[0], 0x0b, 'C4 SpawnItem opcode should be 0x0b');
+assert.strictEqual(spawnItem.readInt32LE(25), groundItem.fetchAmount(), 'C4 SpawnItem should include the ground stack amount');
+assert.strictEqual(spawnItem.readInt32LE(29), 0, 'C4 SpawnItem must include its trailing protocol field');
+
+const etcStatusUpdate = ServerResponse.etcStatusUpdate(actor);
+assert.strictEqual(etcStatusUpdate[0], 0xf3, 'C4 EtcStatusUpdate response opcode should be 0xf3');
+assert.strictEqual(etcStatusUpdate.readInt32LE(1), 3, 'C4 EtcStatusUpdate should send current charges first');
+assert.strictEqual(etcStatusUpdate.readInt32LE(5), 0, 'C4 EtcStatusUpdate should default weight penalty to zero');
+
+const userInfo = ServerResponse.userInfo(actor);
+assert.strictEqual(userInfo[0], 0x04);
+assert.strictEqual(userInfo.readInt32LE(13), 0, 'C4 UserInfo must send boat object id, not character heading');
+assert.deepStrictEqual(actor.paperdollIdSlots, [7, ...Array.from({ length: 14 }, (_, i) => i).filter(slot => slot !== 7)]);
+assert.deepStrictEqual(actor.paperdollSelfIdSlots, [7, ...Array.from({ length: 14 }, (_, i) => i).filter(slot => slot !== 7)]);
+assert.ok(userInfo.includes(0xff), 'C4 UserInfo should include trailing name-color bytes');
+
+const fullBodyActor = fakeActor();
+const fullBodyUserInfo = ServerResponse.userInfo(fullBodyActor);
+assert.ok(fullBodyUserInfo, 'full-body equipment should still produce UserInfo');
+assert.ok(!fullBodyActor.paperdollIdSlots.includes(15), 'internal full-body slot must not be serialized as a C4 equipment field');
+assert.ok(!fullBodyActor.paperdollSelfIdSlots.includes(15), 'internal full-body item slot must not be serialized as a C4 equipment field');
+const userInfoEquipmentOffset = 1 + 20 + Buffer.byteLength('C4Tester\0', 'ucs2') + (19 * 4);
+assert.strictEqual(userInfo.readInt32LE(userInfoEquipmentOffset + (14 * 4)), 4000007, 'C4 UserInfo must repeat the right-hand weapon before the hair field');
+assert.strictEqual(userInfo.readInt32LE(userInfoEquipmentOffset + (15 * 4)), 0, 'C4 UserInfo hair field must not receive a weapon or full-body armor');
+assert.strictEqual(userInfo.readInt32LE(userInfoEquipmentOffset + (30 * 4)), 1007, 'C4 UserInfo must repeat the right-hand weapon display id before the hair field');
+assert.strictEqual(userInfo.readInt32LE(userInfoEquipmentOffset + (31 * 4)), 0, 'C4 UserInfo hair display id must remain empty');
+actor.effects = { stun: { key: 'stun', id: 100, type: 'debuff', expiresAt: Date.now() + 10000 } };
+assert.ok(ServerResponse.userInfo(actor).includes(0x40), 'C4 UserInfo should expose the stun abnormal-effect mask');
+
+const charInfo = ServerResponse.charInfo(actor);
+assert.strictEqual(charInfo[0], 0x03);
+assert.strictEqual(charInfo.readInt32LE(13), 0, 'C4 CharInfo must send boat object id, not character heading');
+assert.ok(charInfo.includes(0xff), 'C4 CharInfo should include trailing name-color bytes');
+assert.strictEqual(charInfoEquipment(charInfo).weapon, 1007, 'C4 CharInfo should display right-hand weapons');
+const speedActor = fakeActor();
+speedActor.fetchRunSpd = () => 115;
+speedActor.fetchWalkSpd = () => 80;
+speedActor.fetchCollectiveRunSpd = () => 125.32994306319671;
+speedActor.fetchCollectiveWalkSpd = () => 87.18604734831075;
+const speedInfo = ServerResponse.charInfo(speedActor);
+const speedNameEnd = findUtf16Terminator(speedInfo, 21);
+const speedOffset = speedNameEnd + 2 + (20 * 4);
+assert.strictEqual(speedInfo.readInt32LE(speedOffset), 115, 'C4 CharInfo must send base run speed separately from its multiplier');
+assert.strictEqual(speedInfo.readInt32LE(speedOffset + 4), 80, 'C4 CharInfo must send base walk speed separately from its multiplier');
+assert(
+    Math.abs(speedInfo.readDoubleLE(speedOffset + (8 * 4)) - 1.0898255918538844) < 0.000001,
+    'C4 CharInfo must send the current movement-speed multiplier for remote interpolation'
+);
+const penalizedSpeedActor = fakeActor();
+penalizedSpeedActor.fetchRunSpd = () => 115;
+penalizedSpeedActor.fetchWalkSpd = () => 80;
+penalizedSpeedActor.fetchCollectiveRunSpd = () => 28;
+penalizedSpeedActor.fetchCollectiveWalkSpd = () => 87.18604734831075;
+const penalizedSpeedInfo = ServerResponse.charInfo(penalizedSpeedActor);
+const penalizedSpeedNameEnd = findUtf16Terminator(penalizedSpeedInfo, 21);
+const penalizedSpeedOffset = penalizedSpeedNameEnd + 2 + (20 * 4);
+assert.strictEqual(penalizedSpeedInfo.readInt32LE(penalizedSpeedOffset), 115, 'C4 CharInfo must retain template run speed during a run-only penalty');
+assert.strictEqual(penalizedSpeedInfo.readInt32LE(penalizedSpeedOffset + 4), 80, 'C4 CharInfo must not inflate template walk speed using the run multiplier');
+assert(
+    Math.abs(penalizedSpeedInfo.readDoubleLE(penalizedSpeedOffset + (8 * 4)) - (28 / 115)) < 0.000001,
+    'C4 CharInfo must encode the temporary run penalty only in its movement multiplier'
+);
+const enchantedActor = fakeActor();
+enchantedActor.backpack.fetchItemRaw = () => ({ fetchEnchantLevel: () => 12 });
+const enchantedUserInfo = ServerResponse.userInfo(enchantedActor);
+const enchantedUserNameColorOffset = enchantedUserInfo.lastIndexOf(Buffer.from([0xff, 0xff, 0xff, 0x00]));
+assert.strictEqual(enchantedUserInfo[enchantedUserNameColorOffset - 21], 12, 'C4 UserInfo should expose the active weapon enchant effect');
+const enchantedCharInfo = ServerResponse.charInfo(enchantedActor);
+const enchantedCharNameColorOffset = enchantedCharInfo.lastIndexOf(Buffer.from([0xff, 0xff, 0xff, 0x00]));
+assert.strictEqual(enchantedCharInfo[enchantedCharNameColorOffset - 21], 12, 'C4 CharInfo should expose the active weapon enchant effect');
+enchantedActor.fetchMounted = () => true;
+const mountedUserInfo = ServerResponse.userInfo(enchantedActor);
+assert.strictEqual(mountedUserInfo[enchantedUserNameColorOffset - 21], 0, 'mounted C4 users should suppress the weapon enchant effect');
+const mountStateChanges = [];
+for (let i = 0; i < mountedUserInfo.length; i++) {
+    if (i !== enchantedUserNameColorOffset - 21 && mountedUserInfo[i] !== enchantedUserInfo[i]) mountStateChanges.push([enchantedUserInfo[i], mountedUserInfo[i]]);
+}
+assert.deepStrictEqual(mountStateChanges, [[0, 1]], 'mounted UserInfo must carry a strider mount type');
+assert.strictEqual(ServerResponse.charInfo(enchantedActor)[enchantedCharNameColorOffset - 21], 0, 'mounted C4 characters should suppress the weapon enchant effect');
 enchantedActor.fetchMountNpcId = () => 12527;
 const striderCharInfo = ServerResponse.charInfo(enchantedActor);
 const striderTailEnd = striderCharInfo.lastIndexOf(Buffer.from([0xff, 0xff, 0xff, 0x00])) + 4;
@@ -456,11 +544,15 @@ const privateStoreSell = ServerResponse.privateStoreMsg(actor, 'Cheap C-Grade ge
 assert.strictEqual(privateStoreSell[0], 0x9c, 'C4 PrivateStoreMsgSell should use opcode 0x9c');
 assert.strictEqual(privateStoreSell.readInt32LE(1), actor.fetchId(), 'C4 PrivateStoreMsgSell should include the seller object id');
 assert.strictEqual(privateStoreSell.toString('ucs2', 5, findUtf16Terminator(privateStoreSell, 5)), 'Cheap C-Grade gear', 'C4 PrivateStoreMsgSell should carry only the shop title after the object id');
+assert.strictEqual(privateStoreSell.length, findUtf16Terminator(privateStoreSell, 5) + 2,
+    'C4 PrivateStoreMsgSell must not append bytes after the terminated title');
 
 const privateStoreBuy = ServerResponse.privateStoreBuyMsg(actor, 'Buying mats');
 assert.strictEqual(privateStoreBuy[0], 0xb9, 'C4 PrivateStoreMsgBuy should use opcode 0xb9');
 assert.strictEqual(privateStoreBuy.readInt32LE(1), actor.fetchId(), 'C4 PrivateStoreMsgBuy should include the buyer object id');
 assert.strictEqual(privateStoreBuy.toString('ucs2', 5, findUtf16Terminator(privateStoreBuy, 5)), 'Buying mats', 'C4 PrivateStoreMsgBuy should carry only the shop title after the object id');
+assert.strictEqual(privateStoreBuy.length, findUtf16Terminator(privateStoreBuy, 5) + 2,
+    'C4 PrivateStoreMsgBuy must not append bytes after the terminated title');
 
 const wantedItem = {
     fetchId: () => 70001,
@@ -476,6 +568,26 @@ assert.strictEqual(privateBuyList.readInt32LE(1), actor.fetchId(), 'C4 PrivateSt
 assert.strictEqual(privateBuyList.readInt32LE(9), 1, 'C4 PrivateStoreListBuy should include the wanted row count');
 assert.strictEqual(privateBuyList.readInt32LE(13), 70001, 'C4 PrivateStoreListBuy should use the seller inventory object id');
 assert.strictEqual(privateBuyList.readInt32LE(39), 62, 'C4 PrivateStoreListBuy should expose the buyer offer price');
+assert.strictEqual(privateBuyList.length, 47,
+    'C4 populated PrivateStoreListBuy must end after its final row without padding');
+
+const wantedSellItem = {
+    ...wantedItem,
+    fetchEquipped: () => false,
+    fetchAmount: () => 5,
+    fetchEnchantLevel: () => 0
+};
+const privateSellActor = {
+    ...actor,
+    fetchPrivateStore: () => ({ items: [{ objectId: wantedSellItem.fetchId(), count: 2, price: 62 }] }),
+    backpack: { fetchItemRaw: () => wantedSellItem }
+};
+const privateSellCustomer = { backpack: { fetchTotalAdena: () => 5000 } };
+const privateSellList = ServerResponse.privateStoreListSell(privateSellActor, privateSellCustomer);
+assert.strictEqual(privateSellList[0], 0x9b, 'C4 private seller should use PrivateStoreListSell');
+assert.strictEqual(privateSellList.readInt32LE(13), 1, 'C4 PrivateStoreListSell should include the advertised item count');
+assert.strictEqual(privateSellList.length, 51,
+    'C4 populated PrivateStoreListSell must end after its final row without padding');
 
 const corruptedReferencePriceItem = {
     ...wantedItem,

@@ -1,4 +1,5 @@
 const assert = require('assert');
+const fs = require('fs');
 
 require('../src/Global');
 
@@ -12,6 +13,26 @@ const actor = {
         fetchItems: () => [],
         fetchItemRaw: () => null,
         fetchTotalAdena: () => 0
+    }
+};
+const item = {
+    fetchId: () => 70001,
+    fetchSelfId: () => 1864,
+    fetchAmount: () => 5,
+    fetchClass2: () => 5,
+    fetchPrice: () => 75,
+    fetchSlot: () => 0,
+    fetchEnchantLevel: () => 0,
+    fetchEquipped: () => false,
+    isWearable: () => false
+};
+const stockedActor = {
+    ...actor,
+    fetchPrivateStore: () => ({ items: [{ objectId: item.fetchId(), selfId: item.fetchSelfId(), count: 2, price: 62 }] }),
+    backpack: {
+        fetchItems: () => [item],
+        fetchItemRaw: () => item,
+        fetchTotalAdena: () => 5000
     }
 };
 
@@ -29,9 +50,25 @@ function assertTerminatedTitle(packet, description) {
 
 assertTerminatedTitle(ServerResponse.privateStoreMsg(actor, 'Sell title'), 'PrivateStoreMsgSell');
 assertTerminatedTitle(ServerResponse.privateStoreBuyMsg(actor, 'Buy title'), 'PrivateStoreMsgBuy');
-assertExactPayload(ServerResponse.privateStoreManageListSell(actor, { items: [] }), 21, 'PrivateStoreManageListSell');
-assertExactPayload(ServerResponse.privateStoreManageListBuy(actor, { items: [] }), 17, 'PrivateStoreManageListBuy');
-assertExactPayload(ServerResponse.privateStoreListSell(actor, actor), 17, 'PrivateStoreListSell');
-assertExactPayload(ServerResponse.privateStoreListBuy(actor, [], 0), 13, 'PrivateStoreListBuy');
+const manageSell = ServerResponse.privateStoreManageListSell(stockedActor, stockedActor.fetchPrivateStore());
+const manageBuy = ServerResponse.privateStoreManageListBuy(stockedActor, stockedActor.fetchPrivateStore());
+const sellList = ServerResponse.privateStoreListSell(stockedActor, actor);
+const buyList = ServerResponse.privateStoreListBuy(actor, [{ item, amount: 2, price: 62 }], 5000);
+assertExactPayload(manageSell, 85, 'PrivateStoreManageListSell');
+assertExactPayload(manageBuy, 39, 'PrivateStoreManageListBuy');
+assertExactPayload(sellList, 51, 'PrivateStoreListSell');
+assertExactPayload(buyList, 47, 'PrivateStoreListBuy');
+
+if (process.argv.includes('--export-fixtures')) {
+    const fixtures = {
+        privateStoreMsgSell: ServerResponse.privateStoreMsg(actor, 'Sell title').toString('hex'),
+        privateStoreMsgBuy: ServerResponse.privateStoreBuyMsg(actor, 'Buy title').toString('hex'),
+        privateStoreManageListSell: manageSell.toString('hex'),
+        privateStoreManageListBuy: manageBuy.toString('hex'),
+        privateStoreListSell: sellList.toString('hex'),
+        privateStoreListBuy: buyList.toString('hex')
+    };
+    fs.writeFileSync('/tmp/l2solo-private-store-fixtures.json', `${JSON.stringify(fixtures, null, 2)}\n`);
+}
 
 console.log('C4 private-store payload tests passed');
