@@ -95,7 +95,7 @@ function userInfo(actor) {
         .writeD(Pledge.allyId(actor))  // Ally ID
         .writeD(Pledge.allyCrestId(actor))  // Ally Crest ID
         .writeD(relation)  // Clan leader / siege relation flags
-        .writeC(0x00)  // ?
+        .writeC(actor.fetchMounted?.() || actor.mounted ? 1 : 0)  // Mount type: strider
         .writeC(actor.fetchPrivateStoreType())  // Private Store Type
         .writeC(actor.fetchIsCrafter())
         .writeD(actor.fetchPk())

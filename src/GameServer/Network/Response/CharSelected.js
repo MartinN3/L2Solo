@@ -32,7 +32,7 @@ function charSelected(actor) {
         .writeD(actor.fetchDex())
         .writeD(actor.fetchWit());
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 32; i++) {
         packet
             .writeD(0x00);
     }

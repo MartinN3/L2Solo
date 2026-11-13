@@ -41,9 +41,9 @@ function stats(actor) {
     const pet=actor.pet;
     if(!(actor.fetchMounted?.() || actor.mounted) || !pet?.petData) return null;
     const gap=pet.fetchLevel()-actor.fetchLevel();
-    // C2 official notes: penalty starts beyond five levels; speed at ten.
+    // Keep the attack penalty, but allow full mount speed at any rider level.
     return { pAtk: pet.fetchPAtk()*(gap>5?Math.max(0.05,0.5-(gap-6)*0.05):1),
-        run: pet.fetchCollectiveRunSpd()*(gap>=10?0.5:1),
-        walk: pet.fetchCollectiveWalkSpd()*(gap>=10?0.5:1) };
+        run: pet.fetchCollectiveRunSpd(),
+        walk: pet.fetchCollectiveWalkSpd() };
 }
 module.exports={mount,dismount,stats,set};

@@ -8,7 +8,7 @@ function questList(quests = []) {
         packet.writeD(quest.id).writeD(quest.condition);
     });
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = questList;

@@ -13,5 +13,5 @@ module.exports = function exStorageMaxCount(actor) {
         .writeD(Limits.forActor(actor, 3))
         .writeD(50 + bonus(1368, 6))
         .writeD(50 + bonus(1369, 6))
-        .fetchBuffer();
+        .buffer;
 };

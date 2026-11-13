@@ -21,7 +21,7 @@ function npcHtml(id, html) {
         .writeS(safeHtml)
         .writeD(0);
 
-    const buffer = packet.fetchBuffer();
+    const buffer = packet.buffer;
     if (invoke('GameServer/Bot/Population/PopulationConfig').developerDiagnostics === true && process.env.L2NODE_PACKET_TRACE !== '0') buffer.__packetTrace = `id=${id}:chars=${safeHtml.length}${safeHtml === source ? '' : ':truncated'}`;
     return buffer;
 }

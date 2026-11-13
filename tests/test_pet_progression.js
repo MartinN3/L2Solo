@@ -320,10 +320,11 @@ async function main() {
     assert(!World.npc.spawns.includes(strider));
     const ride=session.packets.findLast(packet=>packet[0]===0x86);
     assert.strictEqual(ride.readInt32LE(5),1); assert.strictEqual(ride.readInt32LE(9),1); assert.strictEqual(ride.readInt32LE(13),1012526);
-    for(const [gap,attack,speed] of [[5,1,1],[6,.5,1],[9,.35,1],[10,.3,.5]]) {
+    for(const [gap,attack] of [[5,1],[6,.5],[9,.35],[10,.3],[51,.05]]) {
         actor.fetchLevel=()=>strider.fetchLevel()-gap;
         assert(Math.abs(Mount.stats(actor).pAtk-strider.fetchPAtk()*attack)<.0001);
-        assert.strictEqual(Mount.stats(actor).run,strider.fetchCollectiveRunSpd()*speed);
+        assert.strictEqual(Mount.stats(actor).run,strider.fetchCollectiveRunSpd());
+        assert.strictEqual(Mount.stats(actor).walk,strider.fetchCollectiveWalkSpd());
         assert.strictEqual(model.prototype.fetchCollectivePAtk.call(actor),Mount.stats(actor).pAtk);
     }
     actor.fetchLevel=originalLevel;

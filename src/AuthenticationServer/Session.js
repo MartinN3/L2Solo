@@ -30,6 +30,11 @@ class Session {
     }
 
     dataSend(data, encipher = true) {
+        if (encipher) {
+            let checksum = 0;
+            for (let i = 0; i < data.length - 4; i += 4) checksum ^= data.readUInt32LE(i);
+            data.writeUInt32LE(checksum >>> 0, data.length - 4);
+        }
         const encipheredPacket = encipher ? require('blowfish-ecb').encipher(this.blowfish, data) : data;
         const frame = Frame.pack(encipheredPacket);
         if (frame) this.socket.write(frame); // null: longer than a frame, not sent (counted)

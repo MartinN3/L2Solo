@@ -6,7 +6,7 @@ function charCreateSuccess() {
     packet
         .writeD(0x01);
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = charCreateSuccess;

@@ -9,7 +9,7 @@ function macroPacket(macro, count, revision) {
         .writeC(count)
         .writeC(macro ? 1 : 0);
 
-    if (!macro) return packet.fetchBuffer();
+    if (!macro) return packet.buffer;
 
     packet
         .writeD(macro.id)
@@ -28,7 +28,7 @@ function macroPacket(macro, count, revision) {
             .writeS(command.command);
     });
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 function macroList(macros, revision) {

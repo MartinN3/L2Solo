@@ -15,7 +15,7 @@ function authLogin(session, buffer) {
     );
 
     const username = AccountName.resolve(
-        utils.stripNull(deciphered.slice(0x62, 0x62 + 14))
+        utils.stripNull(deciphered.slice(0x5e, 0x5e + 14))
     );
 
     // A client started with a non-English keyboard layout leaks cp1251 bytes into
@@ -27,7 +27,7 @@ function authLogin(session, buffer) {
 
     consume(session, {
         username: username,
-        password: utils.stripNull(deciphered.slice(0x70, 0x70 + 16)).trim(),
+        password: utils.stripNull(deciphered.slice(0x6c, 0x6c + 16)).trim(),
         sessionId: packet.data[1],
     });
 }
