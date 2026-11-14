@@ -30,7 +30,7 @@ function sellList(rows, adena) {
             .writeD(WireD.bounded(row.price));
     });
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = sellList;
