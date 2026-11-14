@@ -763,6 +763,10 @@ assert.strictEqual(purchaseList.readInt32LE(61), 2 ** 7, 'BuyList wearable body 
 assert.strictEqual(purchaseList.readInt32LE(71), 138, 'BuyList wearable price should follow body part/enchant fields');
 
 const sellList = ServerResponse.sellList([{ item: shopShot, amount: 3, price: 10 }], 1000);
+assert.strictEqual(purchaseList.length, 11 + 2 * 32, 'BuyList must end at the last item');
+assert.strictEqual(sellList.length, 11 + 32, 'SellList must end at the last item');
+assert.strictEqual(ServerResponse.purchaseList([], 0).length, 11, 'empty BuyList must not contain padding');
+assert.strictEqual(ServerResponse.sellList([], 0).length, 11, 'empty SellList must not contain padding');
 assert.strictEqual(sellList[0], 0x10, 'C4 SellList opcode should be 0x10');
 assert.strictEqual(sellList.readInt32LE(21), 3, 'SellList should include sellable amount');
 assert.strictEqual(sellList.readInt32LE(29), 0, 'SellList non-wearable rows should still include empty body part');
