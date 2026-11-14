@@ -28,7 +28,7 @@ function purchaseList(items, adena) {
             .writeD(WireD.bounded(item.fetchPrice()));
     });
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = purchaseList;
