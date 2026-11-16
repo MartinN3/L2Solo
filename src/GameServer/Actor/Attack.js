@@ -17,6 +17,7 @@ const ShotStock = invoke('GameServer/Inventory/ShotStock');
 const RaidCurse = invoke('GameServer/RaidBoss/RaidCurse');
 const ChargeLifecycle = invoke('GameServer/Skills/ChargeLifecycle');
 const AttackRange = invoke('GameServer/Actor/AttackRange');
+const SummonAttackRules = invoke('GameServer/Actor/SummonAttackRules');
 const HotPartyCastTracker = invoke('GameServer/Bot/AI/HotPartyCastTracker');
 
 const { weaponMaskFor } = invoke('GameServer/Skills/WeaponMask');
@@ -33,6 +34,7 @@ class Attack {
         this.timers = new Set();
         this.bowReloading = false;
         this.repeatTarget = null;
+        this.repeatAttackRequest = null;
         this.resetQueuedEvent();
     }
 
@@ -85,6 +87,7 @@ class Attack {
         this.timers.clear();
         this.bowReloading = false;
         this.repeatTarget = null;
+        this.repeatAttackRequest = null;
     }
 
     abortCast(session, actor) {
@@ -110,9 +113,15 @@ class Attack {
         return true;
     }
 
-    meleeHit(session, creature) {
+    meleeHit(session, creature, request = null) {
         if (session?.pvpHandoffPending) return;
         const actor = session.actor;
+        if (!SummonAttackRules.canAttack(actor, creature, request)) {
+            this.clearTimers();
+            actor.state.setHits(false);
+            session.dataSendToMe?.(ServerResponse.actionFailed());
+            return;
+        }
         const raidParty = invoke('GameServer/Clan/ClanRaidRoster').offensiveParty(session);
 
         // A swing is already in flight: its end timer owns the next swing and
@@ -121,6 +130,7 @@ class Attack {
         // click cannot stop.
         if (actor.state.fetchHits?.()) {
             this.repeatTarget = creature;
+            this.repeatAttackRequest = request;
             return;
         }
         if (this.blockedPvpDefense(session, actor, creature) || this.checkParticipants(actor, creature)) {
@@ -133,6 +143,7 @@ class Attack {
             // Movement and other actions are legal after the arrow is released,
             // but another arrow must still wait for the weapon reuse phase.
             this.repeatTarget = creature;
+            this.repeatAttackRequest = request;
             return;
         }
         if (!AttackRange.isWithinRange(actor, creature, attackRange)
@@ -141,7 +152,7 @@ class Attack {
             // Auto-attacks and chase arrivals both return here. The target
             // may have moved since the initial attack request or last swing.
             actor.automation.scheduleAction(session, actor, creature, attackRange,
-                () => this.meleeHit(session, creature), { collisionAware: true, action: 'attack' });
+                () => this.meleeHit(session, creature, request), { collisionAware: true, action: 'attack' });
             return;
         }
         if (rangedAttack && !invoke('GameServer/Actor/BowResources').consume(session, actor)) return;
@@ -174,6 +185,7 @@ class Attack {
             reuseMul: rangedAttack ? EffectStats.multiplier(actor, 'atkReuseMul') : 1 });
         const movementGeneration = Number(session.moveRouteGeneration || 0);
         this.repeatTarget = null;
+        this.repeatAttackRequest = null;
         if (rangedAttack) this.bowReloading = true;
         const attackWeapon = WeaponSA.equipped(actor);
         let secondaryDamageMultiplier = 0.85;
@@ -242,6 +254,7 @@ class Attack {
 
             hits.forEach((entry, index) => {
                 const target = entry.target;
+                if (!SummonAttackRules.canAttack(actor, target, target === creature ? request : null)) return;
                 if (index > 0 && RaidCurse.normalAttackBlocked(session, actor, target)) return;
                 if (target?.state?.fetchDead?.() || target?.isDead?.()) return;
                 // A target that stepped away still takes a started swing or a
@@ -273,7 +286,9 @@ class Attack {
         this.queueTimer(() => {
             const repeatTarget = this.repeatTarget;
             const nextTarget = repeatTarget || creature;
+            const nextRequest = repeatTarget ? this.repeatAttackRequest : request;
             this.repeatTarget = null;
+            this.repeatAttackRequest = null;
             if (rangedAttack) this.bowReloading = false;
             // A completed bow release may already have handed control to a
             // newer movement. Do not let the old victim's death abort it.
@@ -294,7 +309,7 @@ class Attack {
             }
 
             if (repeatTarget) {
-                this.meleeHit(session, nextTarget);
+                this.meleeHit(session, nextTarget, nextRequest);
                 return;
             }
 
@@ -303,17 +318,23 @@ class Attack {
                 || actor.isBlocked?.()
             )) return;
 
-            this.meleeHit(session, creature);
+            this.meleeHit(session, creature, request);
 
         }, timing.cycleMs); // Until end of combat move or bow reload
     }
 
-    remoteHit(session, creature, skill) {
+    remoteHit(session, creature, skill, request = null) {
         if (session?.pvpHandoffPending) return;
         const actor = session.actor;
         const raidParty = invoke('GameServer/Clan/ClanRaidRoster').offensiveParty(session);
         const targetKind = skill.fetchTargetKind?.();
         const corpseTarget = ['corpse_mob', 'corpse_player', 'corpse_pet', 'corpse_ally'].includes(targetKind);
+
+        const auraCenter = creature === actor && skill.fetchSemantic?.()?.sourceTarget === 'aura';
+        if (targetKind === 'enemy' && !auraCenter && !SummonAttackRules.canAttack(actor, creature, request)) {
+            session.dataSendToMe?.(ServerResponse.actionFailed());
+            return;
+        }
 
         if (this.blockedPvpDefense(session, actor, creature, skill)
             || this.checkParticipants(actor, creature, { allowDeadTarget: corpseTarget })) {
@@ -360,7 +381,7 @@ class Attack {
         const launchLead = magicSkill && castTime > 420 ? 400 : 0;
         const recoveryMs = !actor.fetchKind && skill.fetchSemantic?.()?.nextActionAttack
             ? this.calculatedSkillCoolTime(actor, skill, magicSkill) : 0;
-        const cast = { raidParty, corpseTarget, mpCost, magicSkill, launchLead, castWeapon, recoveryMs };
+        const cast = { raidParty, corpseTarget, mpCost, magicSkill, launchLead, castWeapon, recoveryMs, request };
         const land = () => this.landRemoteCast(session, actor, creature, skill, cast);
 
         if (launchLead) {
@@ -423,7 +444,7 @@ class Attack {
         }
     }
 
-    landRemoteCast(session, actor, creature, skill, { raidParty, corpseTarget, mpCost, magicSkill, launchLead, castWeapon, recoveryMs = 0 }) {
+    landRemoteCast(session, actor, creature, skill, { raidParty, corpseTarget, mpCost, magicSkill, launchLead, castWeapon, recoveryMs = 0, request = null }) {
         this.activeCast = null;
         // Once the landing callback owns the turn, no other damage event
         // can interleave before MP and effects resolve. Stop watching the
@@ -435,7 +456,7 @@ class Attack {
             return;
         }
 
-        const { corpseAreaCast, selfEffectOnly, executionTargets, emptyEnemyAuraCast } = this.remoteCastTargets(session, actor, creature, skill);
+        const { corpseAreaCast, selfEffectOnly, executionTargets, emptyEnemyAuraCast } = this.remoteCastTargets(session, actor, creature, skill, request);
 
         if (executionTargets.length === 0 && !emptyEnemyAuraCast && !corpseAreaCast) {
             actor.state.setCasts(false);
@@ -480,19 +501,24 @@ class Attack {
             invoke('GameServer/World/Generics/NpcDecay').decay(invoke('GameServer/World/World'), creature);
         }
         executionTargets.forEach((target) => this.applyRemoteCastEffect(session, actor, target, skill,
-            { corpseAreaCast, raidParty, shotState, magicSkill, selfEffectOnly, castWeapon, openingPayment }));
-        const finish = () => this.finishRemoteCast(session, actor, skill, magicSkill, creature);
+            { corpseAreaCast, raidParty, shotState, magicSkill, selfEffectOnly, castWeapon, openingPayment,
+                request: target === creature ? request : null }));
+        const finish = () => this.finishRemoteCast(session, actor, skill, magicSkill, creature, request);
         // Keep the action slot until the C4 recovery ends. Requests arriving
         // after impact still queue ahead of the automatic weapon attack.
         if (recoveryMs > 0) this.queueTimer(finish, recoveryMs);
         else finish();
     }
 
-    remoteCastTargets(session, actor, creature, skill) {
+    remoteCastTargets(session, actor, creature, skill, request = null) {
         const semantic = skill.fetchSemantic?.() || {};
-        const targets = this.resolveSkillTargets(session, actor, creature, skill);
+        const resolvedTargets = this.resolveSkillTargets(session, actor, creature, skill);
         const corpseAreaCast = skill.fetchTargetKind?.() === 'corpse_mob'
             && semantic.sourceTarget === 'area' && semantic.skillType === C4SkillRules.DAMAGE;
+        const targets = (skill.fetchTargetKind?.() === 'enemy' || corpseAreaCast)
+            && resolvedTargets.some(SummonAttackRules.isOwnedPlayable)
+            ? resolvedTargets.filter(target => SummonAttackRules.canAttack(actor, target, target === creature ? request : null))
+            : resolvedTargets;
         const selfEffectOnly = targets.length === 0
             && semantic.sourceTarget === 'aura'
             && !!semantic.selfEffect;
@@ -533,7 +559,9 @@ class Attack {
         return;
     }
 
-    applyRemoteCastEffect(session, actor, target, skill, { corpseAreaCast, raidParty, shotState, magicSkill, selfEffectOnly, castWeapon, openingPayment }) {
+    applyRemoteCastEffect(session, actor, target, skill, { corpseAreaCast, raidParty, shotState, magicSkill, selfEffectOnly, castWeapon, openingPayment, request = null }) {
+        if (!selfEffectOnly && (skill.fetchTargetKind?.() === 'enemy' || corpseAreaCast)
+            && !SummonAttackRules.canAttack(actor, target, request)) return;
         if ((skill.fetchTargetKind?.() === 'enemy' || corpseAreaCast)
             && !invoke('GameServer/Clan/ClanRaidRoster').beforeOffensiveEffect(session, actor, target, raidParty, openingPayment)) return;
         if (skill.fetchTargetKind?.() === 'enemy') {
@@ -595,17 +623,17 @@ class Attack {
         }
     }
 
-    finishRemoteCast(session, actor, skill, magicSkill, target = null) {
+    finishRemoteCast(session, actor, skill, magicSkill, target = null, request = null) {
         delete actor.activeSkillChargeCount;
         this.clearLoadedShot(actor, magicSkill);
         actor.state.setCasts(false);
         invoke('GameServer/Bot/AI/BotSupportPlanner').finishSupportCast(session, actor, skill);
 
         actor.automation.replenishVitals(actor);
-        this.finishSkillAction(session, actor, skill, target);
+        this.finishSkillAction(session, actor, skill, target, request);
     }
 
-    finishSkillAction(session, actor, skill, target) {
+    finishSkillAction(session, actor, skill, target, request = null) {
         // Lisvus onMagicFinalizer starts/renews stance after an offensive
         // cast completes, including a resisted spell, rather than at acceptance.
         if (!actor.fetchKind && skill.fetchTargetKind?.() === 'enemy') {
@@ -631,7 +659,7 @@ class Attack {
 
         // The accepted cast already validated this target's attack permission.
         // meleeHit rechecks participants, PvP defense, weapon range and chase.
-        this.meleeHit(session, target);
+        this.meleeHit(session, target, request);
     }
 
     captureShotState(actor) {

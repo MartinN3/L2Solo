@@ -1,9 +1,11 @@
 const World = invoke('GameServer/World/World');
 const AttackRange = invoke('GameServer/Actor/AttackRange');
 const ArenaCombatRules = invoke('GameServer/World/ArenaCombatRules');
+const SummonAttackRules = invoke('GameServer/Actor/SummonAttackRules');
 
-function canAttackNpc(npc, data = {}) {
-    return npc?.fetchAttackable?.() === true || npc?.fetchIsSummon?.() === true || data.ctrl === true;
+function canAttackNpc(npc, data = {}, actor = null) {
+    if (SummonAttackRules.isOwnedPlayable(npc)) return !!actor && SummonAttackRules.canAttack(actor, npc, data);
+    return npc?.fetchAttackable?.() === true || data.ctrl === true;
 }
 
 function attackExec(session, actor, data) {
@@ -35,14 +37,19 @@ function attackExec(session, actor, data) {
     }
 
     World.fetchNpc(data.id).then((npc) => {
+        if (SummonAttackRules.isOwnedPlayable(npc) && !canAttackNpc(npc, data, actor)) {
+            session.dataSendToMe?.(invoke('GameServer/Network/Response').actionFailed());
+            return;
+        }
         scheduleAttack(npc, () => {
-            if (canAttackNpc(npc, data)) {
-                actor.attack.meleeHit(session, npc);
+            if (canAttackNpc(npc, data, actor)) {
+                actor.attack.meleeHit(session, npc, data);
             }
-            else {
+            else if (!SummonAttackRules.isOwnedPlayable(npc)) {
                 World.npcTalk(session, npc);
             }
-        }, canAttackNpc(npc, data) ? attackRange : AttackRange.TALK_RANGE);
+            else session.dataSendToMe?.(invoke('GameServer/Network/Response').actionFailed());
+        }, canAttackNpc(npc, data, actor) ? attackRange : AttackRange.TALK_RANGE);
     }).catch(() => {
         World.fetchUser(data.id).then((user) => {
             scheduleAttack(user, () => {
