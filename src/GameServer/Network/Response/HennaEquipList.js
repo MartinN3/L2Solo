@@ -24,7 +24,7 @@ function hennaEquipList(adena, hennas) {
         }
     }
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = hennaEquipList;

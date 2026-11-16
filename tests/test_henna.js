@@ -145,12 +145,14 @@ async function main() {
         assert.strictEqual(listPacket.readInt32LE(13), 1, 'owned symbol exposes the id');
         assert.strictEqual(listPacket.readInt32LE(17), 4445, 'owned symbol exposes the dye');
         assert.strictEqual(listPacket.readInt32LE(33), 0, 'unowned symbol is a zero row');
+        assert.strictEqual(listPacket.length, 1 + 12 + 2 * 20, 'E2 ends after its rows');
 
         const preview = hennaItemInfo({
             fetchInt: () => 21, fetchStr: () => 40, fetchCon: () => 40,
             fetchMen: () => 20, fetchDex: () => 30, fetchWit: () => 20
         }, HennaService.symbol(1), 12345);
         assert.strictEqual(preview.readInt32LE(1), 1, 'E3 starts with the symbol id');
+        assert.strictEqual(preview.length, 1 + 24 + 6 * 5, 'E3 ends after its stat previews');
         assert.strictEqual(preview.readInt32LE(5), 4445);
         assert.strictEqual(preview.readInt32LE(25), 21, 'E3 writes the base INT as D');
         assert.strictEqual(preview[29], 21, 'E3 previews INT unchanged');

@@ -27,7 +27,7 @@ function hennaItemInfo(actor, symbol, adena) {
         packet.writeD(current).writeC(byte((current || 0) + (delta || 0)));
     }
 
-    return packet.fetchBuffer();
+    return packet.buffer;
 }
 
 module.exports = hennaItemInfo;
