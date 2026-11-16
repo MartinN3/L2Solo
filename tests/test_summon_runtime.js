@@ -277,8 +277,8 @@ async function checkPhantomActions(session, summon, summonSkillId) {
     assert.strictEqual(World.npc.spawns[0].fetchSelfId(), 12006, 'Summon Kat level 1 should spawn sourced npcId 12006');
     assert.strictEqual(World.npc.spawns[0].fetchOwnerId(), session.actor.fetchId(), 'summoned servitor should keep owner id');
     assert.strictEqual(World.npc.spawns[0].fetchIsSummon(), true, 'summoned servitor should be marked as summon');
-    assert.strictEqual(AttackExec.canAttackNpc(World.npc.spawns[0]), true, 'player attack path should treat an active servitor as damageable');
-    assert.strictEqual(SkillExec.canTargetEnemyNpc(World.npc.spawns[0]), true, 'player skill path should treat an active servitor as an enemy target');
+    assert.strictEqual(AttackExec.canAttackNpc(World.npc.spawns[0]), false, 'an owned servitor is not an unconditionally attackable monster');
+    assert.strictEqual(SkillExec.canTargetEnemyNpc(World.npc.spawns[0]), false, 'an owned servitor needs owner-aware offensive skill permission');
     assert.strictEqual(session.actor.summon, World.npc.spawns[0], 'actor should retain active summon reference');
     assert.strictEqual(World.npc.spawns[0].controlMode, 'follow', 'summoned servitor should enter native follow mode on spawn');
     assert.strictEqual(World.npc.spawns[0].followOwner, true, 'summoned servitor should follow owner by default');

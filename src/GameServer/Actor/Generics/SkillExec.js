@@ -2,9 +2,11 @@
 
 const World = invoke('GameServer/World/World');
 const ArenaCombatRules = invoke('GameServer/World/ArenaCombatRules');
+const SummonAttackRules = invoke('GameServer/Actor/SummonAttackRules');
 
-function canTargetEnemyNpc(npc, data = {}) {
-    return npc?.fetchAttackable?.() === true || npc?.fetchIsSummon?.() === true || data.ctrl === true;
+function canTargetEnemyNpc(npc, data = {}, actor = null) {
+    if (SummonAttackRules.isOwnedPlayable(npc)) return !!actor && SummonAttackRules.canAttack(actor, npc, data);
+    return npc?.fetchAttackable?.() === true || data.ctrl === true;
 }
 
 function cancelFailedSupportTarget(session, actor, data, skill) {
@@ -36,14 +38,19 @@ function skillExec(session, actor, data) {
     function scheduleCast(target, callback, options) {
         // Target lookups and approaches outlive the request's initial action
         // check. A different request may have started casting or swinging.
-        if (!canStartSkill(session, actor, data) || !actor.attack.validateSkillTarget(session, actor, target, skill)) return;
+        if (!canStartSkill(session, actor, data)) return;
+        if (skill.fetchTargetKind() === 'enemy' && !SummonAttackRules.canAttack(actor, target, data)) {
+            session.dataSendToMe?.(invoke('GameServer/Network/Response').actionFailed());
+            return;
+        }
+        if (!actor.attack.validateSkillTarget(session, actor, target, skill)) return;
         actor.automation.scheduleAction(session, actor, target, skill.fetchDistance(), () => {
             if (canStartSkill(session, actor, data)) callback();
         }, options);
     }
 
     if (skill.fetchTargetKind() === 'self') {
-        actor.attack.remoteHit(session, actor, skill);
+        actor.attack.remoteHit(session, actor, skill, data);
         return;
     }
 
@@ -54,7 +61,7 @@ function skillExec(session, actor, data) {
             return;
         }
         scheduleCast(summon, () => {
-            actor.attack.remoteHit(session, summon, skill);
+            actor.attack.remoteHit(session, summon, skill, data);
         });
         return;
     }
@@ -63,7 +70,7 @@ function skillExec(session, actor, data) {
     // Lisvus. Attack.resolveSkillTargets expands them to the eligible party,
     // clan/alliance or dead-clan members inside the sourced radius.
     if (['party', 'ally', 'corpse_ally'].includes(skill.fetchTargetKind())) {
-        actor.attack.remoteHit(session, actor, skill);
+        actor.attack.remoteHit(session, actor, skill, data);
         return;
     }
 
@@ -71,7 +78,7 @@ function skillExec(session, actor, data) {
     // caster as well. Attack.resolveSkillTargets will fan the native effect
     // out only to valid enemies inside the sourced radius.
     if (skill.fetchTargetKind() === 'enemy' && skill.fetchSemantic?.().sourceTarget === 'aura') {
-        actor.attack.remoteHit(session, actor, skill);
+        actor.attack.remoteHit(session, actor, skill, data);
         return;
     }
 
@@ -97,10 +104,10 @@ function skillExec(session, actor, data) {
             }
 
             if (skill.fetchTargetKind() === 'corpse_mob' && npc.fetchAttackable?.() && npc.isDead?.()) {
-                actor.attack.remoteHit(session, npc, skill);
+                actor.attack.remoteHit(session, npc, skill, data);
             }
-            else if (skill.fetchTargetKind() === 'enemy' && canTargetEnemyNpc(npc, data)) {
-                actor.attack.remoteHit(session, npc, skill);
+            else if (skill.fetchTargetKind() === 'enemy' && canTargetEnemyNpc(npc, data, actor)) {
+                actor.attack.remoteHit(session, npc, skill, data);
             }
         }, { allowDeadTarget: SpoilSweep.isSweepSkill(data.selfId)
             && String(session?.accountId || '').startsWith('bot_') });
@@ -108,7 +115,7 @@ function skillExec(session, actor, data) {
         World.fetchUser(data.id).then((user) => {
             scheduleCast(user, () => {
                 if (skill.fetchTargetKind() !== 'enemy') {
-                    actor.attack.remoteHit(session, user, skill);
+                    actor.attack.remoteHit(session, user, skill, data);
                 }
                 else if (data.ctrl || user.fetchPvpFlag?.() > 0 || user.fetchKarma?.() > 0) {
                     if (!ArenaCombatRules.canInteract(actor, user)) return;
@@ -117,7 +124,7 @@ function skillExec(session, actor, data) {
                         session.dataSendToMe(ServerResponse.speak(actor, { kind: 0, text: "You cannot attack players in a peace zone." }));
                         return;
                     }
-                    actor.attack.remoteHit(session, user, skill);
+                    actor.attack.remoteHit(session, user, skill, data);
                 }
             }, { allowDeadTarget: skill.fetchTargetKind() === 'corpse_player' });
         }).catch((err) => {
